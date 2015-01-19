@@ -1,0 +1,91 @@
+---
+- action: apt pkg={{item}}
+  with_items:
+  - postgresql
+  - python-psycopg2 # for the postgresql module of Ansible
+  - apache2
+  - libapache2-mod-perl2
+  - libtimedate-perl
+  - libnet-dns-perl
+  - libnet-ldap-perl
+  - libio-socket-ssl-perl
+  - libpdf-api2-perl
+  - libsoap-lite-perl
+  - libgd-text-perl
+  - libtext-csv-xs-perl
+  - libjson-xs-perl
+  - libgd-graph-perl
+  - libapache-dbi-perl
+  # From `perl /opt/otrs/bin/otrs.CheckModules.pl`
+  - libcrypt-eksblowfish-perl
+  - libarchive-zip-perl
+  - libtemplate-perl
+  - libyaml-libyaml-perl
+  - libdbd-pg-perl
+
+- name: Fetch installed OTRS version
+  command: cat /opt/otrs/RELEASE |grep VERSION
+  register: otrs_release
+  failed_when: false
+  changed_when: false
+
+- include: download.yml
+  when: not otrs_version in otrs_release.stdout
+
+- name: Create user
+  user: name=otrs home=/opt/otrs comment="OTRS user" groups=www-data append=yes
+
+- name: Copy Config.pm
+  copy: src=Config.pm dest=/opt/otrs/Kernel/Config.pm
+
+- name: Copy GenericAgent.pm
+  copy: src=GenericAgent.pm dest=/opt/otrs/Kernel/Config/GenericAgent.pm
+
+- name: Check if all needed modules are installed
+  command: perl -cw {{item}}
+  with_items:
+  - /opt/otrs/bin/cgi-bin/index.pl
+  - /opt/otrs/bin/cgi-bin/customer.pl
+  - /opt/otrs/bin/otrs.PostMaster.pl
+  changed_when: false
+
+- name: Set file permissions
+  command: /opt/otrs/bin/otrs.SetPermissions.pl --web-group=www-data
+
+- name: Create role for root
+  shell: su postgres -c "LC_ALL=C createuser root --superuser"
+  register:     su_postgres
+  changed_when: su_postgres.rc == 0
+  failed_when:  su_postgres.rc != 0 and ("exist" not in su_postgres.stderr)
+
+  # login_unix_socket has been introduced in Ansible 1.8.3
+  # curl https://raw.githubusercontent.com/ansible/ansible-modules-core/devel/database/postgresql/postgresql_user.py > /usr/share/pyshared/ansible/modules/core/database/postgresql/postgresql_user.py
+  # curl https://raw.githubusercontent.com/ansible/ansible-modules-core/devel/database/postgresql/postgresql_db.py > /usr/share/pyshared/ansible/modules/core/database/postgresql/postgresql_db.py
+- name: Create database user
+  postgresql_user: db=postgres
+                   user=otrs
+                   login_unix_socket=/var/run/postgresql
+                   login_user=root
+
+  # ALTER USER otrs WITH PASSWORD 'otrs';
+- name: Create database
+  postgresql_db:  name=otrs
+                  owner=otrs
+                  encoding='UTF-8'
+                  login_unix_socket=/var/run/postgresql
+                  login_user=root
+
+- name: Enable apache module
+  apache2_module: name=perl
+
+- name: Copy apache configuration
+  copy: src=apache2-httpd.include.conf dest=/etc/apache2/conf-available/otrs.conf
+
+- name: Enable apache configuration
+  file: src=../conf-available/otrs.conf dest=/etc/apache2/conf-enabled/otrs.conf state=link
+
+- name: Restart apache2
+  service: name=apache2 state=restarted
+
+- name: Set up cronjobs
+  include: cronjobs.yml

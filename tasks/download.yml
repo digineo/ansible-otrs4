@@ -1,0 +1,12 @@
+---
+- name: Download otrs
+  command: wget http://ftp.otrs.org/pub/otrs/otrs-{{otrs_version}}.tar.bz2
+  args:
+    chdir: /opt
+    creates: /opt/otrs-{{otrs_version}}.tar.bz2
+
+- name: Create otrs directory
+  file: path=/opt/otrs state=directory
+
+- name: Extract otrs
+  command: tar xf /opt/otrs-{{otrs_version}}.tar.bz2 --directory /opt/otrs --strip-components 1

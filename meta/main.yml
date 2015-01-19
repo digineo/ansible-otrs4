@@ -1,0 +1,16 @@
+---
+galaxy_info:
+  author: Julian Kornberger
+  description: Role to set up OTRS4
+  company: Digineo GmbH
+  license: MIT
+  min_ansible_version: 1.8.3
+  platforms:
+  - name: Debian
+    versions:
+    - jessie
+  - name: Ubuntu
+    versions:
+    - trusty
+  categories:
+  - packaging
